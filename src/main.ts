@@ -3,10 +3,13 @@ import {
   PerspectiveCamera,
   WebGLRenderer,
   sRGBEncoding,
-  Color
+  Color,
+  PCFSoftShadowMap,
+  Fog
 } from 'three';
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { loadEnvironment } from './app/environment';
 import { Landscape } from './app/landscape';
 
 import './style.css';
@@ -20,6 +23,7 @@ let controls: OrbitControls;
 function init() {
   scene = new Scene();
   scene.background = new Color(0xf1f2f4);
+  scene.fog = new Fog(0x333333);
   camera = new PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
@@ -29,13 +33,17 @@ function init() {
   camera.position.set(0, 3, 20);
   renderer = new WebGLRenderer({ antialias: true, alpha: true });
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFSoftShadowMap;
   renderer.outputEncoding = sRGBEncoding;
+
   resize();
   const app = document.querySelector<HTMLDivElement>('#app');
   if (!app) {
     throw new Error('unable to find the main app div element');
   }
   app.appendChild(renderer.domElement);
+
+  loadEnvironment(scene, renderer);
 
   landscape = new Landscape(scene);
   setupControls();
