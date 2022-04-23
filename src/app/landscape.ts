@@ -57,7 +57,6 @@ export class Landscape {
     const c = 1;
     const d = 10;
     for (let i = 2, maxI = pos.length - 1; i < maxI; i += 3) {
-      //pos[i] += (Math.random() - 0.5) * 5;
       pos[i] += perlin.get(pos[i - 1] * c, pos[i + 1] * c) * d;
     }
     geometry.setAttribute('position', new BufferAttribute(pos, 3));
@@ -66,15 +65,7 @@ export class Landscape {
   private addLights() {
     this.directLight = new DirectionalLight(0xffffff, 1);
     this.directLight.position.set(-3, 2, 2);
-    // this.directLight.castShadow = true;
-    // this.directLight.shadow.mapSize.width = 2048; // default
-    // this.directLight.shadow.mapSize.height = 2048; // default
-    // this.directLight.shadow.camera.near = 0.5; // default
-    // this.directLight.shadow.camera.far = 500; // default
-    // this.directLight.shadow.camera.left = -100;
-    // this.directLight.shadow.camera.right = 100;
-    // this.directLight.shadow.camera.top = 100;
-    // this.directLight.shadow.camera.bottom = -100;
+
     this.scene.add(this.directLight);
   }
 

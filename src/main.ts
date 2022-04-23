@@ -5,12 +5,14 @@ import {
   sRGBEncoding,
   Color,
   PCFSoftShadowMap,
-  Fog
+  Fog,
+  Vector3
 } from 'three';
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { loadEnvironment } from './app/environment';
 import { Landscape } from './app/landscape';
+import { PlaceNavigator } from './app/place-navigator';
 import { Places } from './app/places';
 
 import './style.css';
@@ -20,6 +22,7 @@ let camera: PerspectiveCamera;
 let renderer: WebGLRenderer;
 let landscape: Landscape;
 let places: Places;
+let placeNavigator: PlaceNavigator;
 let controls: OrbitControls;
 
 function init() {
@@ -32,7 +35,8 @@ function init() {
     0.1,
     1000
   );
-  camera.position.set(0, 3, 20);
+  camera.position.set(0, 10, 20);
+  camera.lookAt(new Vector3());
   renderer = new WebGLRenderer({ antialias: true, alpha: true });
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFSoftShadowMap;
@@ -49,7 +53,9 @@ function init() {
 
   landscape = new Landscape(scene);
   places = new Places(scene, 10);
-  setupControls();
+  placeNavigator = new PlaceNavigator(camera, places);
+  //setupControls();
+
   update();
   window.addEventListener('resize', resize);
 }
@@ -66,6 +72,7 @@ function update() {
   if (controls) {
     controls.update();
   }
+  placeNavigator.update();
   landscape.update();
 }
 

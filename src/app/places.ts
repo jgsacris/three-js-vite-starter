@@ -14,7 +14,7 @@ import {
 } from 'three';
 
 export class Places {
-  private locations: Vector2[];
+  private _locations: Vector2[];
   private readonly size: number = 800;
   private readonly height: number = 7;
 
@@ -22,22 +22,25 @@ export class Places {
     this.setLocations();
   }
 
+  public get locations() {
+    return this._locations;
+  }
   private setLocations() {
-    this.locations = [];
-    for (let i = 0; i < this.totalPlaces; i++) {
+    this._locations = [];
+    for (let i = 0; i < this.totalPlaces - 1; i++) {
       const loc = new Vector2(
         this.getRandomCoordinate(),
         this.getRandomCoordinate()
       );
-      this.locations.push(loc);
+      this._locations.push(loc);
       const mesh = this.createShape(loc);
       this.addLight(loc, mesh);
     }
     const loc = new Vector2();
-    this.locations.push(loc);
+    this._locations.push(loc);
     const mesh = this.createShape(loc);
     this.addLight(loc, mesh);
-    console.log('locations', this.locations);
+    console.log('locations', this._locations);
   }
 
   private getRandomCoordinate(): number {
@@ -75,11 +78,11 @@ export class Places {
   }
 
   private getConeGeometry() {
-    return new ConeGeometry(2, 3, MathUtils.randInt(6, 23));
+    return new ConeGeometry(2, 3, MathUtils.randInt(5, 23));
   }
 
   private getCylinderGeometry() {
-    return new CylinderGeometry(2, 3, MathUtils.randInt(6, 23));
+    return new CylinderGeometry(0, 2, 3, MathUtils.randInt(5, 23));
   }
 
   private addLight(location: Vector2, mesh: Mesh) {
