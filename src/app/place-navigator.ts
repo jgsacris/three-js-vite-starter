@@ -1,9 +1,10 @@
-import { PerspectiveCamera, Vector2, Vector3 } from 'three';
+import { Mesh, PerspectiveCamera, Quaternion, Vector2, Vector3 } from 'three';
 import { Places } from './places';
 import * as TWEEN from '@tweenjs/tween.js';
 
 export class PlaceNavigator {
   private locations: Vector2[];
+
   constructor(private camera: PerspectiveCamera, private places: Places) {
     this.createUI();
   }
@@ -34,13 +35,40 @@ export class PlaceNavigator {
     const selectedPlace = this.locations[parseInt(s.value, 10)];
     console.log('selectedPlace', selectedPlace);
     const cPos = this.camera.position.clone();
-    this.camera.lookAt(new Vector3(selectedPlace.x, 0, selectedPlace.y));
-    const tween = new TWEEN.Tween(cPos)
-      .to({ x: selectedPlace.x, y: cPos.y, z: selectedPlace.y }, 3000)
+    const newPosition = new Vector3(selectedPlace.x, 2, selectedPlace.y);
+    const finalPos = this.findFinalCameraPosition(newPosition);
+    const tween1 = this.slowlyRotateCamera(newPosition);
+    const tween2 = new TWEEN.Tween(cPos)
+      .to({ x: finalPos.x, y: cPos.y, z: finalPos.y }, 3000)
       .easing(TWEEN.Easing.Quadratic.InOut)
       .onUpdate((current: Vector3) => {
         this.camera.position.copy(current);
-      })
-      .start();
+        this.camera.lookAt(newPosition);
+      });
+    tween1.chain(tween2);
   };
+
+  private slowlyRotateCamera(target: Vector3) {
+    const startRotation = new Quaternion();
+    let targetRotation = new Quaternion();
+    startRotation.copy(this.camera.quaternion);
+    this.camera.lookAt(target);
+    this.camera.updateMatrixWorld();
+    targetRotation = this.camera.quaternion.clone();
+    this.camera.quaternion.copy(startRotation);
+    return new TWEEN.Tween(this.camera.quaternion)
+      .to(targetRotation, 1000)
+      .easing(TWEEN.Easing.Sinusoidal.InOut)
+      .start();
+  }
+
+  private findFinalCameraPosition(target: Vector3) {
+    const origin = new Vector2(this.camera.position.x, this.camera.position.z);
+    const target2d = new Vector2(target.x, target.z);
+    const distance = origin.distanceTo(target2d);
+    const xU = (target2d.x - origin.x) / distance;
+    const yU = (target2d.y - origin.y) / distance;
+    const dU = new Vector2(xU, yU).multiplyScalar(distance - 10);
+    return origin.add(dU);
+  }
 }
