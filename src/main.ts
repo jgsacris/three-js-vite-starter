@@ -11,6 +11,7 @@ import {
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { loadEnvironment } from './app/environment';
 import { Landscape } from './app/landscape';
+import { Places } from './app/places';
 
 import './style.css';
 
@@ -18,12 +19,13 @@ let scene: Scene;
 let camera: PerspectiveCamera;
 let renderer: WebGLRenderer;
 let landscape: Landscape;
+let places: Places;
 let controls: OrbitControls;
 
 function init() {
   scene = new Scene();
   scene.background = new Color(0xf1f2f4);
-  scene.fog = new Fog(0x333333);
+  scene.fog = new Fog(0xffffff, 5, 500);
   camera = new PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
@@ -46,6 +48,7 @@ function init() {
   loadEnvironment(scene, renderer);
 
   landscape = new Landscape(scene);
+  places = new Places(scene, 10);
   setupControls();
   update();
   window.addEventListener('resize', resize);
