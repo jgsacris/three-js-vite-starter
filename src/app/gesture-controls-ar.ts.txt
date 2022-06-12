@@ -1,0 +1,558 @@
+/**
+ * Copyright (c) svarmony Technologies GmbH. All rights reserved.
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ *
+ * Written by Julio Garcia <jg@svarmony.com>, 2022
+ *
+ * This class enables the end user to scale and rotate around the Y axis a 3D object.
+ * 
+ * NOTE: Please set the following in the css file:
+ * canvas {
+  -webkit-touch-callout: none; // iOS Safari 
+  -webkit-user-select: none; // Safari 
+  -khtml-user-select: none; // Konqueror HTML 
+    -moz-user-select: none; // Old versions of Firefox 
+     -ms-user-select: none; // Internet Explorer/Edge 
+         user-select: none; // Non-prefixed version, currently
+                            //   supported by Chrome, Opera and Firefox 
+}
+ *
+ * USAGE:
+ *
+ * You just need to pass to the constructor
+ * 
+ * IMPORTANT: So that the bounding box is calculated correctly only the outer Object3D can have a scale other that one.
+ * To normalize the inner Objects you can run the following:
+ * `ThreeCleaner.normalizeScale(this._model);`
+ * And the set the scale of the model if necessary.
+ * 
+ * TODO: Implement the possibility of activating and deactivating the different transformations independently. 
+ *
+ */
+import {
+  Box3,
+  Camera,
+  Group,
+  Material,
+  Mesh,
+  MeshBasicMaterial,
+  Object3D,
+  RingGeometry,
+  Vector2,
+  Vector3,
+  Raycaster,
+  PlaneBufferGeometry,
+  Scene,
+  CircleGeometry,
+} from 'three';
+import { Observable, fromEvent, Subject, Subscription } from 'rxjs';
+import { take, takeUntil } from 'rxjs/operators';
+import { animation, CancelabelTween } from '@svy/swarm-web-utils';
+import {
+  BusEvent,
+  BusEventWithPayload,
+} from '../message-bus/message-bus-event';
+
+export enum TransformType {
+  SCALE = 'scale',
+  ROTATE = 'rotate',
+  REPOSITION = 'reposition',
+}
+export class ActiveteControlEvent extends BusEventWithPayload<TransformType> {
+  static readonly type = 'ActivateControlEvent';
+  public readonly type = ActiveteControlEvent.type;
+}
+
+export class DeactivateControlEvent extends BusEventWithPayload<TransformType> {
+  static readonly type = 'DeactivateControlEvent';
+  public readonly type = DeactivateControlEvent.type;
+}
+
+export class IGestureControlsConfig {
+  enableRotation?: boolean;
+  enableScaling?: boolean;
+  enableReposition?: boolean;
+  rotationSensitivity?: number;
+  minScale?: number;
+  maxScale?: number;
+  showRing?: boolean;
+  activeDefault?: boolean;
+  raiseOnSelect?: boolean;
+}
+
+export class GestureControls {
+  private _rotateStart: Vector2;
+  private _rotateEnd: Vector2;
+  private _rotateDelta: Vector2;
+  private _pointerDown$: Observable<TouchEvent>;
+  private _rotation$: Observable<TouchEvent>;
+  private _scale$: Observable<TouchEvent>;
+  private _reposition$: Observable<TouchEvent>;
+  private _rotationChange$: Subject<number>;
+  private _scaleChange$: Subject<number>;
+  private _repositionChange$: Subject<Vector3>;
+  private _pointerUp$: Observable<TouchEvent>;
+  private _longTap$: Observable<number>;
+  private _pointerMoveSubscription: Subscription;
+  private _pointerRotateSubscription: Subscription;
+  private _pointerScaleSubscription: Subscription;
+  private _pointerUpSubscription: Subscription;
+  private _dispose$: Subject<boolean>;
+  private _showAnim1: CancelabelTween;
+  private _showAnim2: CancelabelTween;
+  private _hideAnim1: CancelabelTween;
+  private _hideAnim2: CancelabelTween;
+  private _rotationEnabled: boolean = false;
+  private _scaleEnabled: boolean = false;
+  private _repositionEnabled: boolean = false;
+  private _rotationSensitivity: number;
+  private _initialScale: number;
+  private _initialDistance: number;
+  private _initialTouchPosition: Vector3;
+  private _active: boolean;
+  private _minScale: number;
+  private _maxScale: number;
+  private _activeMarker: Mesh;
+  private _activeMarkerMaterial: Material;
+  private _container: Group;
+  private _modelRadius: number;
+  private _initialHeight: number;
+  private _raycaster: Raycaster;
+  private _repositionSurface: Mesh; //this is used as raycasting target;
+  private _repositionTriggerSurface: Mesh;
+  private _showRing: boolean = true;
+  private _raiseOnSelect: boolean = true;
+  /**
+   *
+   * @param _model The model to be rotated
+   * @param _domElement The element that will detect the touch events, usually it is the canvas element form the renderer
+   * @param _config The configuration including the mode of the interaction: only rotate, only scale, or both
+   */
+  constructor(
+    private _model: Object3D,
+    private _domElement: HTMLElement,
+    private _config: IGestureControlsConfig,
+    private _camera: Camera,
+    private _scene: Scene
+  ) {
+    this._active = this._config.activeDefault === false ? false : true;
+    this._showRing = this._config.showRing === false ? false : true;
+    this._raiseOnSelect = this._config.raiseOnSelect === false ? false : true;
+    this._container = new Group();
+    this._container.name = 'GC_container';
+    this._container.add(this._model);
+    this._minScale = this._config.minScale || 0.00001;
+    this._maxScale = this._config.maxScale || 9999999;
+
+    this._rotationSensitivity = this._config.rotationSensitivity || 1;
+    this._domElement.style.touchAction = 'none';
+    this._domElement.style.userSelect = 'none';
+    this._rotateStart = new Vector2();
+    this._rotateEnd = new Vector2();
+    this._rotateDelta = new Vector2();
+    this._initialHeight = this._model.position.y;
+
+    this._repositionEnabled = this._config.enableReposition || false;
+    this._rotationEnabled = this._config.enableRotation || false;
+    this._scaleEnabled = this._config.enableScaling || false;
+    if (this._rotationEnabled) {
+      this._rotationChange$ = new Subject();
+    }
+    if (this._scaleEnabled) {
+      this._scaleChange$ = new Subject();
+    }
+    if (this._repositionEnabled) {
+      this._repositionChange$ = new Subject();
+    }
+
+    this.setupListeners();
+
+    if (this._repositionEnabled) {
+      this._raycaster = new Raycaster();
+      this.createRepositionSurface();
+      this.createRepositionTriggerSurface();
+    }
+    this.createActiveMarker();
+  }
+
+  public get container() {
+    return this._container;
+  }
+
+  public get scaleChange$() {
+    return this._scaleChange$.asObservable();
+  }
+
+  public get rotationChange$() {
+    return this._rotationChange$.asObservable();
+  }
+
+  public get repositionChange$() {
+    return this._repositionChange$.asObservable();
+  }
+
+  /**
+   * Turns the interaction on. Should be called when the object is placed/shown on screen.
+   */
+  public activate() {
+    this._active = true;
+  }
+
+  /**
+   * Turns the interaction off. Should be called when the system lose tracking or the user is repositioning
+   * the object on the screen.
+   */
+  public deactivate() {
+    this._active = false;
+    this.unsubscribeAllActions();
+  }
+
+  public dispose() {
+    this._dispose$.next(true);
+    this._dispose$.complete();
+  }
+
+  private setupListeners() {
+    this._dispose$ = new Subject();
+    this._pointerDown$ = fromEvent<TouchEvent>(this._domElement, 'touchstart', {
+      capture: false,
+    }).pipe(takeUntil(this._dispose$));
+    if (this._rotationEnabled) {
+      this._rotation$ = fromEvent<TouchEvent>(
+        this._domElement,
+        'touchmove'
+      ).pipe(takeUntil(this._dispose$));
+    }
+    if (this._scaleEnabled) {
+      this._scale$ = fromEvent<TouchEvent>(this._domElement, 'touchmove').pipe(
+        takeUntil(this._dispose$)
+      );
+    }
+    if (this._repositionEnabled) {
+      this._reposition$ = fromEvent<TouchEvent>(
+        this._domElement,
+        'touchmove'
+      ).pipe(takeUntil(this._dispose$));
+    }
+
+    this._pointerUp$ = fromEvent<TouchEvent>(this._domElement, 'touchend').pipe(
+      takeUntil(this._dispose$)
+    );
+
+    this._pointerDown$.subscribe(this.onPointerDown);
+  }
+
+  private onPointerDown = (event: TouchEvent) => {
+    if (!this._active) return;
+
+    this.unsubscribeAllActions();
+    if (this._scaleEnabled && event.targetTouches.length === 2) {
+      this._initialScale = this._container.scale.x;
+      this._initialDistance = this.twoTouchDistance(
+        event.targetTouches[0],
+        event.targetTouches[1]
+      );
+      this._pointerScaleSubscription = this._scale$.subscribe(
+        this.onScaleChanged
+      );
+    }
+    let repositioning = false;
+    if (this._repositionEnabled && event.targetTouches.length === 1) {
+      repositioning = this.checkBaseIntersection(event);
+      if (repositioning) {
+        this.raiseModel();
+        this._initialTouchPosition = this.calculateTouchPosition(event);
+        this._pointerMoveSubscription = this._reposition$.subscribe(
+          this.onPositonChanged
+        );
+      }
+    }
+
+    if (
+      !repositioning &&
+      this._rotationEnabled &&
+      event.targetTouches.length === 1
+    ) {
+      const touch = event.targetTouches[0];
+      this._pointerRotateSubscription = this._rotation$.subscribe(
+        this.onRotationChanged
+      );
+
+      this._rotateStart.set(touch.pageX, touch.pageY);
+    }
+
+    this._pointerUpSubscription = this._pointerUp$
+      .pipe(take(1))
+      .subscribe(this.onPointerUp);
+    this.showActiveMarker();
+  };
+
+  private checkBaseIntersection(event: TouchEvent) {
+    const newPosition = new Vector2(
+      (event.touches[0].pageX / window.innerWidth) * 2 - 1,
+      -(event.touches[0].pageY / window.innerHeight) * 2 + 1
+    );
+    this._raycaster.setFromCamera(newPosition, this._camera);
+
+    const intersects = this._raycaster.intersectObject(
+      this._repositionTriggerSurface
+    );
+    if (
+      intersects.length > 0 &&
+      intersects[0].object === this._repositionTriggerSurface
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  private calculateTouchPosition(event: TouchEvent) {
+    const newPosition = new Vector2(
+      (event.touches[0].pageX / window.innerWidth) * 2 - 1,
+      -(event.touches[0].pageY / window.innerHeight) * 2 + 1
+    );
+    this._raycaster.setFromCamera(newPosition, this._camera);
+
+    const intersects = this._raycaster.intersectObject(this._repositionSurface);
+    if (
+      intersects.length > 0 &&
+      intersects[0].object === this._repositionSurface
+    ) {
+      const point = intersects[0].point;
+      if (this._container.parent) {
+        const localPoint = this._container.parent.worldToLocal(point);
+        return new Vector3(
+          localPoint.x - this._container.position.x,
+          0,
+          localPoint.z - this._container.position.z
+        );
+      }
+    }
+    return new Vector3(0, 0, 0);
+  }
+
+  private onPositonChanged = (event: TouchEvent) => {
+    const cTouchPosition = this.calculateTouchPosition(event);
+    const delta = new Vector3().subVectors(
+      cTouchPosition,
+      this._initialTouchPosition
+    );
+    this._container.position.add(delta);
+    this._repositionChange$.next(delta);
+  };
+
+  private onRotationChanged = (event: TouchEvent) => {
+    if (this._rotationEnabled) {
+      this._rotateEnd.set(
+        event.targetTouches[0].pageX,
+        event.targetTouches[0].pageY
+      );
+      this._rotateDelta.subVectors(this._rotateEnd, this._rotateStart);
+      const angDif =
+        (2 * Math.PI * this._rotateDelta.x) / this._domElement.clientHeight; // yes, height
+      const newAng = angDif * this._rotationSensitivity;
+      this._container.rotateY(newAng);
+      this._rotateStart.copy(this._rotateEnd);
+      this._rotationChange$.next(newAng);
+    }
+  };
+
+  private onScaleChanged = (event: TouchEvent) => {
+    if (event.targetTouches.length < 2) return;
+    const cDistance = this.twoTouchDistance(
+      event.targetTouches[0],
+      event.targetTouches[1]
+    );
+    const newScale = this._initialScale * (cDistance / this._initialDistance);
+    if (newScale > this._minScale && newScale < this._maxScale) {
+      this._container.scale.set(newScale, newScale, newScale);
+      this._scaleChange$.next(newScale);
+    }
+  };
+
+  private unsubscribeAllActions() {
+    if (this._pointerScaleSubscription) {
+      this._pointerScaleSubscription.unsubscribe();
+    }
+    if (this._pointerRotateSubscription) {
+      this._pointerRotateSubscription.unsubscribe();
+    }
+    if (this._pointerMoveSubscription) {
+      this._pointerMoveSubscription.unsubscribe();
+    }
+    if (this._pointerUpSubscription) {
+      this._pointerUpSubscription.unsubscribe();
+    }
+  }
+
+  private onPointerUp = (event: TouchEvent) => {
+    this.unsubscribeAllActions();
+
+    this.hideActiveMarker();
+  };
+
+  private twoTouchDistance(touchOne: Touch, touchTwo: Touch): number {
+    const { clientX: xOne, clientY: yOne } = touchOne;
+    const { clientX: xTwo, clientY: yTwo } = touchTwo;
+    const xDelta = xTwo - xOne;
+    const yDelta = yTwo - yOne;
+
+    return Math.sqrt(xDelta * xDelta + yDelta * yDelta);
+  }
+
+  private calcuateBoundingBox(model: Object3D) {
+    const box = new Box3();
+    box.setFromObject(model);
+    return box;
+  }
+
+  private createActiveMarker() {
+    const box = this.calcuateBoundingBox(this._model);
+    const boxSize = new Vector3();
+    box.getSize(boxSize);
+    const margin = 0.9;
+
+    this._modelRadius = Math.max(boxSize.x, boxSize.y) * margin;
+    const ringWidth = this._modelRadius * 0.08;
+    const markerGeometry = new RingGeometry(
+      this._modelRadius - ringWidth,
+      this._modelRadius,
+      64
+    );
+    const material = new MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this._activeMarker = new Mesh(markerGeometry, material);
+    this._activeMarker.name = 'GC-activeMarker';
+    this._activeMarkerMaterial = material;
+    this._activeMarker.position.setY(0.01);
+    this._activeMarker.rotateX(-Math.PI / 2);
+    this._container.add(this._activeMarker);
+  }
+
+  private createRepositionTriggerSurface() {
+    const box = this.calcuateBoundingBox(this._model);
+    const boxSize = new Vector3();
+    box.getSize(boxSize);
+    const margin = 0.7;
+    const radius = Math.max(boxSize.x, boxSize.y) * margin;
+    const geometry = new CircleGeometry(radius, 32);
+    const material = new MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    this._repositionTriggerSurface = new Mesh(geometry, material);
+    this._repositionTriggerSurface.rotateX(-Math.PI / 2);
+    this._container.add(this._repositionTriggerSurface);
+  }
+
+  private createRepositionSurface() {
+    this._repositionSurface = new Mesh(
+      new PlaneBufferGeometry(1000, 1000, 1, 1),
+      new MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.0,
+        depthWrite: false,
+      })
+    );
+
+    this._repositionSurface.rotateX(-Math.PI / 2);
+    this._repositionSurface.position.set(0, -0.01, 0);
+    this._scene.add(this._repositionSurface);
+  }
+
+  private showActiveMarker() {
+    if (!this._showRing) {
+      return;
+    }
+    if (this._showAnim1) {
+      this._showAnim1.cancel();
+    }
+    this._showAnim1 = new CancelabelTween(
+      0,
+      0.5,
+      500,
+      animation.easingFunctions.sineInOut
+    );
+    this._showAnim1.tween.pipe(takeUntil(this._dispose$)).subscribe((val) => {
+      this._activeMarkerMaterial.opacity = val;
+    });
+  }
+
+  private hideActiveMarker() {
+    if (this._hideAnim1) {
+      this._hideAnim1.cancel();
+    }
+
+    if (this._showAnim1) {
+      this._showAnim1.cancel();
+    }
+
+    if (this._showRing) {
+      this._hideAnim1 = new CancelabelTween(
+        0.2,
+        0,
+        250,
+        animation.easingFunctions.sineInOut
+      );
+      this._hideAnim1.tween.pipe(takeUntil(this._dispose$)).subscribe((val) => {
+        this._activeMarkerMaterial.opacity = val;
+      });
+    }
+
+    if (this._hideAnim2) {
+      this._hideAnim2.cancel();
+    }
+
+    // NOTE: this lowers the model
+    if (!this._raiseOnSelect) return;
+    if (
+      this._repositionEnabled &&
+      this._model.position.y !== this._initialHeight
+    ) {
+      this._hideAnim2 = new CancelabelTween(
+        this._model.position.y,
+        this._initialHeight,
+        250,
+        animation.easingFunctions.sineInOut
+      );
+      this._hideAnim2.tween.pipe(takeUntil(this._dispose$)).subscribe({
+        next: (val) => {
+          this._model.position.y = val;
+        },
+        complete: () => {
+          this._model.position.y = this._initialHeight;
+        },
+      });
+    }
+  }
+
+  private raiseModel() {
+    if (!this._raiseOnSelect) return;
+    const initY = this._model.position.y;
+
+    animation
+      .tween(
+        initY,
+        this._modelRadius * 0.1 + initY,
+        250,
+        animation.easingFunctions.sineInOut
+      )
+      .pipe(takeUntil(this._dispose$))
+      .subscribe({
+        next: (val) => {
+          this._model.position.y = val;
+        },
+        complete: () => {
+          this._model.position.y = this._modelRadius * 0.1 + initY;
+        },
+      });
+  }
+}

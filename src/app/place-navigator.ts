@@ -1,12 +1,24 @@
 import { Mesh, PerspectiveCamera, Quaternion, Vector2, Vector3 } from 'three';
 import { Places } from './places';
 import * as TWEEN from '@tweenjs/tween.js';
+import { Subject } from 'rxjs';
+import { CameraViewControl } from './camera-view-control';
 
 export class PlaceNavigator {
   private locations: Vector2[];
+  private navigationEnd$: Subject<Vector3>;
 
-  constructor(private camera: PerspectiveCamera, private places: Places) {
+  constructor(
+    private camera: PerspectiveCamera,
+    private places: Places,
+    private controls: CameraViewControl
+  ) {
     this.createUI();
+    this.navigationEnd$ = new Subject();
+  }
+
+  public get navitationEndObs$() {
+    return this.navigationEnd$.asObservable();
   }
 
   public update() {
@@ -31,6 +43,7 @@ export class PlaceNavigator {
 
   private onPlaceSelected = (el: Event) => {
     console.log('on Place selected', el);
+    this.controls.deactivate();
     const s = el.target as HTMLSelectElement;
     const selectedPlace = this.locations[parseInt(s.value, 10)];
     console.log('selectedPlace', selectedPlace);
@@ -44,6 +57,10 @@ export class PlaceNavigator {
       .onUpdate((current: Vector3) => {
         this.camera.position.copy(current);
         this.camera.lookAt(newPosition);
+      })
+      .onComplete((current: Vector3) => {
+        this.navigationEnd$.next(current);
+        this.controls.activate();
       });
     tween1.chain(tween2);
   };

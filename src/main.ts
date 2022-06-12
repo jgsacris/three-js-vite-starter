@@ -10,6 +10,7 @@ import {
 } from 'three';
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { CameraViewControl } from './app/camera-view-control';
 import { loadEnvironment } from './app/environment';
 import { Landscape } from './app/landscape';
 import { PlaceNavigator } from './app/place-navigator';
@@ -23,7 +24,7 @@ let renderer: WebGLRenderer;
 let landscape: Landscape;
 let places: Places;
 let placeNavigator: PlaceNavigator;
-let controls: OrbitControls;
+let controls: CameraViewControl;
 
 function init() {
   scene = new Scene();
@@ -50,11 +51,16 @@ function init() {
   app.appendChild(renderer.domElement);
 
   loadEnvironment(scene, renderer);
-
+  setupControls();
   landscape = new Landscape(scene);
   places = new Places(scene, 10);
-  placeNavigator = new PlaceNavigator(camera, places);
-  //setupControls();
+  placeNavigator = new PlaceNavigator(camera, places, controls);
+  placeNavigator.navitationEndObs$.subscribe((location) => {
+    console.log('locaton reached', location);
+    //controls.target.copy(location);
+    //controls.saveState();
+    //controls.reset();
+  });
 
   update();
   window.addEventListener('resize', resize);
@@ -77,7 +83,8 @@ function update() {
 }
 
 function setupControls() {
-  controls = new OrbitControls(camera, renderer.domElement);
+  controls = new CameraViewControl(renderer.domElement, camera);
+  controls.activate();
 }
 
 window.addEventListener('DOMContentLoaded', init);
