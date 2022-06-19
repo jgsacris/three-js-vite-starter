@@ -6,7 +6,16 @@ import {
   take,
   takeUntil
 } from 'rxjs';
-import { Camera, Quaternion, Spherical, Vector2, Vector3 } from 'three';
+import {
+  Camera,
+  Euler,
+  MathUtils,
+  Quaternion,
+  Spherical,
+  Vector2,
+  Vector3
+} from 'three';
+import { clamp } from 'three/src/math/MathUtils';
 
 export class CameraViewControl {
   private pointerDown$: Observable<PointerEvent>;
@@ -16,25 +25,35 @@ export class CameraViewControl {
   private pointerMoveSubscritpion: Subscription;
   private pointerUpSubscription: Subscription;
   private active: boolean;
-  private rotateStart: Vector2;
-  private rotateEnd: Vector2;
-  private rotateDelta: Vector2;
-  private sensitivity = 0.5;
-  private quat: Quaternion;
-  private spherical: Spherical;
+  private rotation: Quaternion;
+  private phi: number;
+  private phiSpeed: number;
+  private theta: number;
+  private thetaSpeed: number;
+  private previous: { position: Vector2 | null; rotation: Euler };
+  private current: { position: Vector2; delta: Vector2 };
+  private moving: boolean;
 
   constructor(private domElement: HTMLElement, private camera: Camera) {
     //this.domElement.style.touchAction = 'none';
     this.domElement.style.userSelect = 'none';
+
+    this.current = {
+      position: new Vector2(),
+      delta: new Vector2()
+    };
+    this.previous = {
+      position: null,
+      rotation: new Euler()
+    };
+    this.phi = 0;
+    this.phiSpeed = 3;
+    this.theta = 0;
+    this.thetaSpeed = 1;
+    this.moving = false;
+    this.rotation = new Quaternion();
+
     this.setupEvents();
-    this.rotateStart = new Vector2();
-    this.rotateEnd = new Vector2();
-    this.rotateDelta = new Vector2();
-    this.quat = new Quaternion().setFromUnitVectors(
-      this.camera.up,
-      new Vector3(0, 1, 0)
-    );
-    this.spherical = new Spherical();
   }
 
   public activate() {
@@ -47,7 +66,39 @@ export class CameraViewControl {
   }
 
   public update() {
-    //todo
+    if (!this.moving) return;
+    this.current.delta.subVectors(
+      this.current.position,
+      this.previous.position!
+    );
+    this.previous.position!.copy(this.current.position);
+
+    const xh = this.current.delta.x / window.innerWidth;
+    const yh = this.current.delta.y / window.innerHeight;
+    console.log('xh', xh);
+    this.phi += xh * this.phiSpeed;
+    this.theta = clamp(
+      this.theta + yh * this.thetaSpeed,
+      -Math.PI / 3,
+      Math.PI / 3
+    );
+
+    console.log('phi', this.phi);
+
+    const qx = new Quaternion();
+    qx.setFromAxisAngle(new Vector3(0, 1, 0), this.phi);
+    const qz = new Quaternion();
+    qz.setFromAxisAngle(new Vector3(1, 0, 0), this.theta);
+
+    const q = new Quaternion();
+    q.multiply(qx);
+    q.multiply(qz);
+    const rotation = new Euler().setFromQuaternion(q);
+    //this.rotation.copy(q);
+    this.camera.quaternion.copy(q);
+    //this.camera.rotateX(rotation.x);
+    // this.camera.rotateY(rotation.y);
+    // this.camera.rotateZ(rotation.z);
   }
 
   private setupEvents() {
@@ -71,6 +122,18 @@ export class CameraViewControl {
   private onPointerDown = (event: PointerEvent) => {
     console.log('poinerDonw, active:', this.active);
     if (!this.active) return;
+
+    this.current.position.x = event.pageX - window.innerWidth / 2;
+    this.current.position.y = event.pageY - window.innerHeight / 2;
+    if (!this.previous.position) {
+      this.previous.position = this.current.position.clone();
+      this.previous.rotation = this.camera.rotation.clone();
+    }
+    //NOT working !!!!
+    this.phi = this.camera.rotation.y;
+    console.log('start phi', this.phi);
+    //this.theta = this.camera.rotation.x;
+    this.moving = true;
     this.pointerMoveSubscritpion = this.pointerMove$
       .pipe(takeUntil(this.pointerUp$))
       .subscribe(this.onPointerMove);
@@ -78,31 +141,22 @@ export class CameraViewControl {
     this.pointerUpSubscription = this.pointerUp$
       .pipe(take(1))
       .subscribe(this.onPointeUp);
-    this.rotateStart.set(event.pageX, event.pageY);
   };
 
   private onPointerMove = (event: PointerEvent) => {
-    console.log('move', event);
-    this.rotateEnd.set(event.pageX, event.pageY);
-    this.rotateDelta.subVectors(this.rotateEnd, this.rotateStart);
-    const angYDif =
-      (2 * Math.PI * this.rotateDelta.x) / this.domElement.clientHeight; // yes, height
-    const newAngY = angYDif * this.sensitivity;
-
-    const angXDif =
-      (2 * Math.PI * this.rotateDelta.y) / this.domElement.clientWidth; // yes, height
-    const newAngX = angXDif * this.sensitivity;
-    this.rotateStart.copy(this.rotateEnd);
-    this.camera.rotateY(newAngY);
-    this.camera.rotateX(newAngX);
+    this.current.position.x = event.pageX - window.innerWidth / 2;
+    this.current.position.y = event.pageY - window.innerHeight / 2;
   };
 
   private onPointeUp = (event: PointerEvent) => {
     console.log('up', event);
+    this.moving = false;
   };
 
   private unsubscribeAllActions() {
-    this.pointerMoveSubscritpion.unsubscribe();
-    this.pointerUpSubscription.unsubscribe();
+    if (this.pointerMoveSubscritpion) {
+      this.pointerMoveSubscritpion.unsubscribe();
+      this.pointerUpSubscription.unsubscribe();
+    }
   }
 }

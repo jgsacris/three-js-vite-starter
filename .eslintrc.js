@@ -10,6 +10,6 @@ module.exports = {
     'prettier'
   ],
   rules: {
-    'prettier/prettier': 2 // Means error
+    'prettier/prettier': ['error', { endOfLine: 'auto' }]
   }
 };
