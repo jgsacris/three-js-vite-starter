@@ -1,5 +1,6 @@
 import {
   Scene,
+  Group,
   PerspectiveCamera,
   WebGLRenderer,
   sRGBEncoding,
@@ -25,6 +26,7 @@ let landscape: Landscape;
 let places: Places;
 let placeNavigator: PlaceNavigator;
 let controls: CameraViewControl;
+let transformNode: Group;
 
 function init() {
   scene = new Scene();
@@ -42,6 +44,8 @@ function init() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFSoftShadowMap;
   renderer.outputEncoding = sRGBEncoding;
+  transformNode = new Group();
+  scene.add(transformNode);
 
   resize();
   const app = document.querySelector<HTMLDivElement>('#app');
@@ -53,7 +57,7 @@ function init() {
   loadEnvironment(scene, renderer);
   setupControls();
   landscape = new Landscape(scene);
-  places = new Places(scene, 10);
+  places = new Places(transformNode, 10);
   placeNavigator = new PlaceNavigator(camera, places, controls);
   placeNavigator.navitationEndObs$.subscribe((location) => {
     console.log('locaton reached', location);
@@ -83,7 +87,7 @@ function update() {
 }
 
 function setupControls() {
-  controls = new CameraViewControl(renderer.domElement, camera);
+  controls = new CameraViewControl(renderer.domElement, transformNode);
   controls.activate();
 }
 

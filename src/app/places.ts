@@ -4,6 +4,7 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
+  Group,
   MathUtils,
   Mesh,
   MeshStandardMaterial,
@@ -18,7 +19,7 @@ export class Places {
   private readonly size: number = 800;
   private readonly height: number = 7;
 
-  constructor(private scene: Scene, private totalPlaces: number) {
+  constructor(private transformNode: Group, private totalPlaces: number) {
     this.setLocations();
   }
 
@@ -55,7 +56,7 @@ export class Places {
     const mesh = new Mesh(geometry, material);
     mesh.position.set(location.x, this.height, location.y);
     mesh.castShadow = true;
-    this.scene.add(mesh);
+    this.transformNode.add(mesh);
     return mesh;
   }
 
@@ -95,6 +96,6 @@ export class Places {
     light.shadow.camera.far = 30;
     light.shadow.camera.fov = 40;
     light.target = mesh;
-    this.scene.add(light);
+    this.transformNode.add(light);
   }
 }

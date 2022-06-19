@@ -6,7 +6,14 @@ import {
   take,
   takeUntil
 } from 'rxjs';
-import { Camera, Quaternion, Spherical, Vector2, Vector3 } from 'three';
+import {
+  Camera,
+  Object3D,
+  Quaternion,
+  Spherical,
+  Vector2,
+  Vector3
+} from 'three';
 
 export class CameraViewControl {
   private pointerDown$: Observable<PointerEvent>;
@@ -20,21 +27,17 @@ export class CameraViewControl {
   private rotateEnd: Vector2;
   private rotateDelta: Vector2;
   private sensitivity = 0.5;
-  private quat: Quaternion;
-  private spherical: Spherical;
 
-  constructor(private domElement: HTMLElement, private camera: Camera) {
+  constructor(
+    private domElement: HTMLElement,
+    private transformNode: Object3D
+  ) {
     //this.domElement.style.touchAction = 'none';
     this.domElement.style.userSelect = 'none';
     this.setupEvents();
     this.rotateStart = new Vector2();
     this.rotateEnd = new Vector2();
     this.rotateDelta = new Vector2();
-    this.quat = new Quaternion().setFromUnitVectors(
-      this.camera.up,
-      new Vector3(0, 1, 0)
-    );
-    this.spherical = new Spherical();
   }
 
   public activate() {
@@ -89,12 +92,11 @@ export class CameraViewControl {
       (2 * Math.PI * this.rotateDelta.x) / this.domElement.clientHeight; // yes, height
     const newAngY = angYDif * this.sensitivity;
 
-    const angXDif =
-      (2 * Math.PI * this.rotateDelta.y) / this.domElement.clientWidth; // yes, height
-    const newAngX = angXDif * this.sensitivity;
+    // const angXDif =
+    //   (2 * Math.PI * this.rotateDelta.y) / this.domElement.clientWidth; // yes, height
+    // const newAngX = angXDif * this.sensitivity;
     this.rotateStart.copy(this.rotateEnd);
-    this.camera.rotateY(newAngY);
-    this.camera.rotateX(newAngX);
+    this.transformNode.rotateY(newAngY);
   };
 
   private onPointeUp = (event: PointerEvent) => {
@@ -102,7 +104,7 @@ export class CameraViewControl {
   };
 
   private unsubscribeAllActions() {
-    this.pointerMoveSubscritpion.unsubscribe();
-    this.pointerUpSubscription.unsubscribe();
+    //this.pointerMoveSubscritpion.unsubscribe();
+    //this.pointerUpSubscription.unsubscribe();
   }
 }

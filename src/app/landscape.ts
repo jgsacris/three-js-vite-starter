@@ -8,7 +8,8 @@ import {
   MeshPhongMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
-  Scene
+  Scene,
+  Group
 } from 'three';
 
 import { Noise } from './noise/perlin2';
@@ -18,7 +19,7 @@ export class Landscape {
   private angle = 0;
   private dAngle = 0.005;
 
-  constructor(private scene: Scene) {
+  constructor(private transformNode: Scene) {
     this.addLights();
     this.addPlane();
     // this.addCube();
@@ -46,7 +47,7 @@ export class Landscape {
     this.plane = new Mesh(geometry, material);
     this.plane.rotateX(-Math.PI / 2);
     this.plane.receiveShadow = true;
-    this.scene.add(this.plane);
+    this.transformNode.add(this.plane);
     this.plane.geometry.attributes.position.needsUpdate = true;
     material.needsUpdate = true;
   }
@@ -66,7 +67,7 @@ export class Landscape {
     this.directLight = new DirectionalLight(0xffffff, 1);
     this.directLight.position.set(-3, 2, 2);
 
-    this.scene.add(this.directLight);
+    this.transformNode.add(this.directLight);
   }
 
   private addCube() {
@@ -76,6 +77,6 @@ export class Landscape {
     const mesh = new Mesh(geometry, material);
     mesh.position.set(0, 6, 0);
     mesh.castShadow = true;
-    this.scene.add(mesh);
+    this.transformNode.add(mesh);
   }
 }
