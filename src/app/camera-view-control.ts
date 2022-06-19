@@ -93,12 +93,8 @@ export class CameraViewControl {
     const q = new Quaternion();
     q.multiply(qx);
     q.multiply(qz);
-    const rotation = new Euler().setFromQuaternion(q);
-    //this.rotation.copy(q);
+
     this.camera.quaternion.copy(q);
-    //this.camera.rotateX(rotation.x);
-    // this.camera.rotateY(rotation.y);
-    // this.camera.rotateZ(rotation.z);
   }
 
   private setupEvents() {
