@@ -6,8 +6,7 @@ import {
   take,
   takeUntil
 } from 'rxjs';
-import { defaultThrottleConfig } from 'rxjs/internal/operators/throttle';
-import { Camera, Vector2 } from 'three';
+import { Camera, Quaternion, Spherical, Vector2, Vector3 } from 'three';
 
 export class CameraViewControl {
   private pointerDown$: Observable<PointerEvent>;
@@ -21,6 +20,8 @@ export class CameraViewControl {
   private rotateEnd: Vector2;
   private rotateDelta: Vector2;
   private sensitivity = 0.5;
+  private quat: Quaternion;
+  private spherical: Spherical;
 
   constructor(private domElement: HTMLElement, private camera: Camera) {
     //this.domElement.style.touchAction = 'none';
@@ -29,6 +30,11 @@ export class CameraViewControl {
     this.rotateStart = new Vector2();
     this.rotateEnd = new Vector2();
     this.rotateDelta = new Vector2();
+    this.quat = new Quaternion().setFromUnitVectors(
+      this.camera.up,
+      new Vector3(0, 1, 0)
+    );
+    this.spherical = new Spherical();
   }
 
   public activate() {
