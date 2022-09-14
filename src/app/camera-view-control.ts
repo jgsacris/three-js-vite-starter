@@ -33,6 +33,8 @@ export class CameraViewControl {
   private previous: { position: Vector2 | null; rotation: Euler };
   private current: { position: Vector2; delta: Vector2 };
   private moving: boolean;
+  private phiOffset: number;
+  private isNewLocation: boolean;
 
   constructor(private domElement: HTMLElement, private camera: Camera) {
     //this.domElement.style.touchAction = 'none';
@@ -49,11 +51,26 @@ export class CameraViewControl {
     this.phi = 0;
     this.phiSpeed = 3;
     this.theta = 0;
+    this.phiOffset = 0;
+
     this.thetaSpeed = 1;
     this.moving = false;
     this.rotation = new Quaternion();
+    this.isNewLocation = true;
 
     this.setupEvents();
+  }
+
+  public updateRotation(quaternion: Quaternion) {
+    const rotation = new Euler().setFromQuaternion(quaternion, 'YXZ');
+    this.phi = rotation.y;
+    this.theta = rotation.x;
+  }
+
+  public resetRotation(newPosition: Vector3) {
+    this.isNewLocation = true;
+    this.camera.lookAt(newPosition);
+    this.phi = 0;
   }
 
   public activate() {
@@ -75,7 +92,7 @@ export class CameraViewControl {
 
     const xh = this.current.delta.x / window.innerWidth;
     const yh = this.current.delta.y / window.innerHeight;
-    console.log('xh', xh);
+
     this.phi += xh * this.phiSpeed;
     this.theta = clamp(
       this.theta + yh * this.thetaSpeed,
@@ -83,16 +100,15 @@ export class CameraViewControl {
       Math.PI / 3
     );
 
-    console.log('phi', this.phi);
+    const qy = new Quaternion();
 
+    qy.setFromAxisAngle(new Vector3(0, 1, 0), this.phi);
     const qx = new Quaternion();
-    qx.setFromAxisAngle(new Vector3(0, 1, 0), this.phi);
-    const qz = new Quaternion();
-    qz.setFromAxisAngle(new Vector3(1, 0, 0), this.theta);
+    qx.setFromAxisAngle(new Vector3(1, 0, 0), this.theta);
 
     const q = new Quaternion();
+    q.multiply(qy);
     q.multiply(qx);
-    q.multiply(qz);
 
     this.camera.quaternion.copy(q);
   }
@@ -116,19 +132,11 @@ export class CameraViewControl {
   }
 
   private onPointerDown = (event: PointerEvent) => {
-    console.log('poinerDonw, active:', this.active);
     if (!this.active) return;
 
     this.current.position.x = event.pageX - window.innerWidth / 2;
     this.current.position.y = event.pageY - window.innerHeight / 2;
-    if (!this.previous.position) {
-      this.previous.position = this.current.position.clone();
-      this.previous.rotation = this.camera.rotation.clone();
-    }
-    //NOT working !!!!
-    this.phi = this.camera.rotation.y;
-    console.log('start phi', this.phi);
-    //this.theta = this.camera.rotation.x;
+    this.previous.position = this.current.position.clone();
     this.moving = true;
     this.pointerMoveSubscritpion = this.pointerMove$
       .pipe(takeUntil(this.pointerUp$))
@@ -145,7 +153,6 @@ export class CameraViewControl {
   };
 
   private onPointeUp = (event: PointerEvent) => {
-    console.log('up', event);
     this.moving = false;
   };
 

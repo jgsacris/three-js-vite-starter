@@ -6,7 +6,8 @@ import {
   Color,
   PCFSoftShadowMap,
   Fog,
-  Vector3
+  Vector3,
+  CubicInterpolant
 } from 'three';
 
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
@@ -60,6 +61,8 @@ function init() {
     //controls.target.copy(location);
     //controls.saveState();
     //controls.reset();
+    controls.activate();
+    controls.updateRotation(camera.quaternion);
   });
 
   update();

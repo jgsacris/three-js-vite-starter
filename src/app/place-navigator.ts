@@ -60,7 +60,6 @@ export class PlaceNavigator {
       })
       .onComplete((current: Vector3) => {
         this.navigationEnd$.next(current);
-        this.controls.activate();
       });
     tween1.chain(tween2);
   };
